@@ -1,0 +1,246 @@
+{
+  "name": "HR Application Mailer",
+  "nodes": [
+    {
+      "parameters": {
+        "formTitle": "Send Job Applications to HRs",
+        "formDescription": "Upload the CSV of HR email addresses and your resume. One email with the resume attached is sent to each HR, with a 20-35 second pause between emails.",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "HR Email List (CSV)",
+              "fieldType": "file",
+              "fieldName": "hr_csv",
+              "multipleFiles": false,
+              "acceptFileTypes": ".csv",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Resume",
+              "fieldType": "file",
+              "fieldName": "resume",
+              "multipleFiles": false,
+              "acceptFileTypes": ".pdf,.doc,.docx",
+              "requiredField": true
+            }
+          ]
+        },
+        "options": {
+          "buttonLabel": "Start Sending",
+          "respondWithOptions": {
+            "values": {
+              "formSubmittedText": "Sending has started. Emails go out one by one with a short pause between each."
+            }
+          }
+        }
+      },
+      "id": "b9051ae8-6f6a-4271-9be9-8350e7bf1647",
+      "name": "Upload HR List and Resume",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.6,
+      "position": [
+        0,
+        80
+      ],
+      "webhookId": "d3a34351-c34c-4af3-97d9-7af57a44a30d"
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first();\nconst bin = item.binary || {};\nconst keys = Object.keys(bin);\nlet csvKey = keys.find(k => /\\.csv$/i.test(bin[k].fileName || '') || /csv/i.test(bin[k].mimeType || ''));\nif (!csvKey) csvKey = keys.find(k => /csv/i.test(k));\nlet resumeKey = keys.find(k => k !== csvKey);\nif (!csvKey || !resumeKey) {\n  throw new Error('Could not find both the CSV file and the resume in the form upload. Found: ' + keys.join(', '));\n}\nreturn [{ json: { resumeFileName: bin[resumeKey].fileName }, binary: { csv: bin[csvKey], resume: bin[resumeKey] } }];"
+      },
+      "id": "7c64cd49-6dc7-4d08-a3a2-2347f9144396",
+      "name": "Identify CSV and Resume",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "binaryPropertyName": "csv",
+        "options": {
+          "enableBOM": true,
+          "headerRow": true
+        }
+      },
+      "id": "8051675b-de4d-4447-9c22-a842ada65c15",
+      "name": "Read HR Emails from CSV",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1.2,
+      "position": [
+        448,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const resume = $('Identify CSV and Resume').first().binary.resume;\nconst emailRe = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}/;\nconst seen = new Set();\nconst out = [];\nfor (const row of $input.all()) {\n  const j = row.json || {};\n  const preferredKey = Object.keys(j).find(k => /e-?mail/i.test(k));\n  let value = preferredKey ? String(j[preferredKey] || '') : '';\n  let match = value.match(emailRe);\n  if (!match) {\n    for (const v of Object.values(j)) {\n      const m = String(v || '').match(emailRe);\n      if (m) { match = m; break; }\n    }\n  }\n  if (!match) continue;\n  const email = match[0].trim().toLowerCase();\n  if (seen.has(email)) continue;\n  seen.add(email);\n  out.push({ json: { email }, binary: { resume } });\n}\nif (out.length === 0) throw new Error('No valid email addresses found in the CSV.');\nreturn out;"
+      },
+      "id": "a0a6c522-e152-4447-8128-e7353011ddd7",
+      "name": "Clean Emails and Attach Resume",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        672,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.email }}",
+        "subject": "Application for Data Analyst/AIML Engineering Internship/Job - Neelgreev Ganguly",
+        "emailType": "text",
+        "message": "Dear Madam/Sir,\n\nI am Neelgreev Ganguly, in the verge of completing my B.Tech Computer Science Engineering and looking forward to an internship/placement job in your organization where I can grow with the company and support through my value addition for the growth of the company.\n\nMy resume is attached herewith for your kind perusal.\n\nI am strong in my subject,diligent, resourceful, dynamic, with pleasing personality and excellent communication skills.\nLooking forward to your magnanimous consideration.\n\nYours Sincerely with Regards,\nNeelgreev Ganguly",
+        "options": {
+          "appendAttribution": false,
+          "attachmentsUi": {
+            "attachmentsBinary": [
+              {
+                "property": "resume"
+              }
+            ]
+          },
+          "senderName": "Neelgreev Ganguly"
+        }
+      },
+      "id": "9ed46324-98d7-4358-a5fb-f453656a1690",
+      "name": "Send Application Email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        1120,
+        0
+      ],
+      "webhookId": "965edb62-336f-4f2b-a11a-a89222861942",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "chg1aUxClviKfd3j",
+          "name": "Gmail account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "amount": "={{ Math.floor(Math.random() * 16) + 20 }}"
+      },
+      "id": "52293e2d-5d19-4aa7-813d-2e17bcb24da1",
+      "name": "Pause Between Emails",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        1344,
+        80
+      ],
+      "webhookId": "fad6773a-7a12-479c-b3b7-b5560f9f97c3"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "e359861b-c696-48e5-a31c-78de8dbc691d",
+      "name": "One HR at a Time",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        896,
+        80
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Upload HR List and Resume": {
+      "main": [
+        [
+          {
+            "node": "Identify CSV and Resume",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Identify CSV and Resume": {
+      "main": [
+        [
+          {
+            "node": "Read HR Emails from CSV",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read HR Emails from CSV": {
+      "main": [
+        [
+          {
+            "node": "Clean Emails and Attach Resume",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clean Emails and Attach Resume": {
+      "main": [
+        [
+          {
+            "node": "One HR at a Time",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Application Email": {
+      "main": [
+        [
+          {
+            "node": "Pause Between Emails",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pause Between Emails": {
+      "main": [
+        [
+          {
+            "node": "One HR at a Time",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "One HR at a Time": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Send Application Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "9a5b0434-7b72-4549-a03f-322b27db7dc9",
+  "meta": {
+    "instanceId": "92cc91226736995aaf521c0aa0e7fb7d05e721679eebd187ed3cfc99b1d3bdce"
+  },
+  "nodeGroups": [],
+  "id": "TWBq9FEVbDH6vG6V",
+  "tags": []
+}
